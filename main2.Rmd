@@ -1,0 +1,198 @@
+---
+title: "Meta analysis on cancer and beverage intake"
+author: "Izar de Villasante, Brainvitge"
+date: '`r format(Sys.Date(),"%e de %B, %Y")`'
+#runtime: shiny
+output:
+  html_document:
+    df_print: paged
+    toc: yes
+    toc_depth: 4
+    toc_float: yes
+  word_document:
+    toc: yes
+    toc_depth: '4'
+  pdf_document:
+    keep_tex: yes
+    toc: yes
+    toc_depth: 4
+params:
+  
+  
+  
+  
+  main_folder: !r getwd()
+  #/home/izar/notebooks/
+  
+  men_color: "aquamarine"  #hcl(h=60,c=100,l=65) 
+  women_color: "indianred1"      #hcl(h=15,c=100,l=65) #"#ED813E" # 
+  results: ./Results
+  Datasets: ./Datasets
+  mercedes: "EPIC.PANACEA_log2_factors" 
+  excel: "Table1.4_type_bev.xlsx"
+  variables: [vol]
+    
+header-includes: 
+  - \usepackage{bbm}
+  - \usepackage[spanish]{babel}
+---
+\newline
+\newline
+
+
+```{r setup, include=FALSE}
+require(knitr)
+#rmarkdown::render("panacea.Rmd", params = "ask")
+opts_knit$set(output.dir = getwd())
+options(knitr.duplicate.label = "allow")
+
+
+
+# include this code chunk as-is to set options
+opts_chunk$set(comment = NA, prompt = TRUE, tidy = FALSE, 
+               fig.width = 20, fig.height = 20,echo = TRUE, 
+               message = FALSE, warning = FALSE, cache=FALSE,error=TRUE, quiet = TRUE, include=TRUE)
+Sys.setlocale("LC_TIME", "C")
+```
+
+```{r paquetes, include=FALSE}
+if(!(require(readxl))) install.packages("readxl")
+if(!(require(devtools))) install.packages("devtools")
+if(!(require(lmerTest))) install.packages("lmerTest")
+if(!(require(ggplot2))) install.packages("ggplot2")
+if(!(require(ggpubr)))install.packages("ggpubr")
+if(!(require(grid)))install.packages("grid")
+
+if(!(require(ggrepel)))install.packages("ggrepel")
+if(!(require(forcats)))install.packages("forcats")
+if(!(require(dplyr)))install.packages("dplyr")
+if(!(require(gridExtra)))install.packages("gridExtra")
+
+
+if(!(require(meta)))install.packages("meta")
+if(!(require(metafor)))install.packages("metafor")
+if(!(require(dmetar)))devtools::install_github("MathiasHarrer/dmetar") 
+if(!require("tidyverse")) install.packages("tidyverse")
+if(!require("fs")) install.packages("fs")
+if(!require("readxl")) install.packages("readxl")
+
+
+if(!(require(printr))) {
+  install.packages(
+    'printr',
+    type = 'source',
+    repos = c('http://yihui.name/xran', 'http://cran.rstudio.com')
+  )
+}
+```
+
+
+# 0.Load data:
+
+The starting point is an excel with different sheets for every type of cancer:
+
+
+```{r load data}
+library(readxl)
+library("tidyverse")
+#Table1.cohort <- read_excel("C:/Users/izar/Downloads/Table 1. General study characteristics of included studies(m_a).xlsx", sheet = "Cohort")
+#Table1.CC <- read_excel("C:/Users/izar/Downloads/Table 1. General study characteristics of included studies(m_a).xlsx", sheet = "Case-control")
+#Table1.All <- read_excel("Table1_all.xlsx", sheet = "All studies", skip=14)
+
+path <- params$excel
+
+path %>%
+  excel_sheets()
+
+datasets <- path %>%
+        excel_sheets() %>%
+        set_names() %>%
+       map(read_excel,
+           path = path)
+
+
+        
+#str(datasets)
+```
+In this case cancer types are from sheet 6 to 11:
+```{r,cache=FALSE}
+cancer_data <- datasets[c(7:14)]
+names(cancer_data)
+
+```
+
+All our datasets contain the same columns:
+```{r}
+names(cancer_data[[1]])
+```
+
+
+# Meta-Analysis:
+
+In the following steps the different cancer sites will be analyzed discriminating by beverage.
+Before starting some considerations should be taken.
+
+For binary outcome data as having/not having a disease (cancer), it is common to use the **Mantel-Haenszel method** *(Mantel and Haenszel 1959; Robins, Greenland, and Breslow 1986)*, to pool results. The formula for this method looks like this:
+
+\begin{equation}
+\hat\theta_{MH} = \frac{\sum\limits_{k=1}^K w_{k} \hat\theta_k}{\sum\limits_{k=1}^K w_{k}}
+\end{equation}
+
+In order to use Mantel-Haenszel method the following are needed:
+
+* A. **Event rate data**
+  - Number of events in the experimental treatment arm
+  - Number of participants in the experimental treatment arm
+  - Number of events in the control arm
+  - Number of participants in the control arm
+     
+* B. **The so-called person-time** 
+  It has to be collected or calculated by hand. What is basically needed to calculate person-time data is:
+  - The number of events
+  - The timeframe during which they occurred.
+
+Unfortunately, since pre-calculated effect sizes are provided together with Intervals of Confidence the metagen package will be used. In this case, **Mantel-Haenszel method** is not applicable. Instead the **Inverse variance method** is used  $1/\hat\sigma^2_k$ .
+The $\sigma^2$ or standard error can be obtained from pre-calculated effect sizes and their interval of confidence. The effect sizes should be transformed into a natural scale using the log-transform before they are pooled as follows:
+```{r}
+for (i in 1:length(cancer_data)){
+  cancer_data[[i]]$RR<- log(as.numeric(cancer_data[[i]]$Value)+0.0001)
+  cancer_data[[i]]$lower <- log(cancer_data[[i]]$CI_lower+0.0001)
+  cancer_data[[i]]$upper <- log(cancer_data[[i]]$CI_upper+0.0001)
+  cancer_data[[i]]$seTE <- (cancer_data[[i]]$upper - cancer_data[[i]]$lower)/3.92
+
+}
+
+saveRDS(cancer_data,"cancer_data.rds")
+```
+
+Now the seTE values can be used to calculate the combined effect size using the **inverse variance method** $1/\hat\sigma^2_k$ previously mentioned.
+
+* **Random effects:** Since the populations in the studies are different, a random effect meta-analysis will be conducted. 
+
+* **The Knapp-Hartung(-Sidik-Jonkman) adjustment will be used:** Hartung and Knapp (2001a,b) proposed an alternative method for random effects meta-analysis based on a refined variance estimator for the treatment estimate. Simulation studies (Hartung and Knapp, 2001a,b; IntHout et al., 2014; Langen et al., 2018) show improved coverage probabilities compared to the classic random effects method.
+
+Let's get into it:
+
+
+
+```{r,results='asis', quiet = TRUE,include=TRUE}
+#lapply(cancer_data, function(x) {
+#  knitr::knit_child(
+#    'template.Rmd', envir = environment(), quiet = TRUE)
+#})
+cancer_n <-1
+#beverage_n <-1
+for (x in cancer_data){
+  cat(knit_child(text = readLines('template.Rmd'),envir=globalenv(), quiet = TRUE),echo=FALSE)
+  cancer_n <-cancer_n+1
+  }
+```
+
+
+# Summaries
+
+
+```{r}
+summaries
+```
+

@@ -1,0 +1,127 @@
+---
+title: "Meta analysis on cancer and beverage intake"
+author: "Izar de Villasante, Brainvitge"
+date: '`r format(Sys.Date(),"%e de %B, %Y")`'
+#runtime: shiny
+output:
+  html_document:
+    df_print: paged
+    toc: yes
+    toc_depth: 4
+    toc_float: yes
+  word_document:
+    toc: yes
+    toc_depth: '4'
+  pdf_document:
+    keep_tex: yes
+    toc: yes
+    toc_depth: 4
+params:
+  excel: "Table1_type_bev.xlsx"
+  cancer: "Premenopausal"
+  #beverage: "SSB"
+  cancer_n: 1
+  beverage_n: 1
+    
+header-includes: 
+  - \usepackage{bbm}
+  - \usepackage[spanish]{babel}
+---
+
+
+
+```{r , include=FALSE}
+require(knitr)
+#rmarkdown::render("panacea.Rmd", params = "ask")
+opts_knit$set(output.dir = getwd())
+opts_knit$set(root.dir = getwd())
+# include this code chunk as-is to set options
+opts_chunk$set(comment = NA, prompt = TRUE, tidy = FALSE, 
+               fig.width = 20, fig.height = 20,echo = TRUE, 
+               message = FALSE, warning = FALSE, cache=FALSE)
+Sys.setlocale("LC_TIME", "C")
+```
+
+```{r , include=FALSE}
+if(!(require(readxl))) install.packages("readxl")
+if(!(require(devtools))) install.packages("devtools")
+if(!(require(lmerTest))) install.packages("lmerTest")
+if(!(require(ggplot2))) install.packages("ggplot2")
+if(!(require(ggpubr)))install.packages("ggpubr")
+if(!(require(grid)))install.packages("grid")
+
+if(!(require(ggrepel)))install.packages("ggrepel")
+if(!(require(forcats)))install.packages("forcats")
+if(!(require(dplyr)))install.packages("dplyr")
+if(!(require(gridExtra)))install.packages("gridExtra")
+
+
+if(!(require(meta)))install.packages("meta")
+if(!(require(metafor)))install.packages("metafor")
+if(!(require(dmetar)))devtools::install_github("MathiasHarrer/dmetar") 
+if(!require("tidyverse")) install.packages("tidyverse")
+if(!require("fs")) install.packages("fs")
+if(!require("readxl")) install.packages("readxl")
+
+
+if(!(require(printr))) {
+  install.packages(
+    'printr',
+    type = 'source',
+    repos = c('http://yihui.name/xran', 'http://cran.rstudio.com')
+  )
+}
+```
+
+
+
+```{r, include=FALSE}
+
+if(!exists("x")){
+  cancer_n<-params$cancer_n
+  cancer<-params$cancer
+  cancer_data <- readRDS(file = "cancer_data.rds")
+  x<-cancer_data[[cancer]]
+  }
+```
+
+
+ 
+
+
+
+```{r, include=FALSE}
+data <- x
+MaxTable <- function(InVec, mult = FALSE) {
+  if (!is.factor(InVec)) InVec <- factor(InVec)
+  A <- tabulate(InVec)
+  if (isTRUE(mult)) {
+    levels(InVec)[A == max(A)]
+  } 
+  else levels(InVec)[which.max(A)]
+}
+
+cancer <- MaxTable(data$Cancer_type)
+
+beverages <- split(data,gsub('[[:digit:]]+', '', data$Type_of_beverages))
+```
+
+## `r cancer_n`.`r cancer`
+
+
+
+```{r,results='asis',quiet=TRUE,echo=FALSE}
+#lapply(cancer_data, function(x) {
+#  knitr::knit_child(
+#    'template.Rmd', envir = environment(), quiet = TRUE)
+#})
+beverage_n <- 1
+
+for (bev_data in beverages){
+  cat(knit_child(text = readLines('event_rate_template.Rmd'),envir=globalenv(), quiet=TRUE ))
+  beverage_n <-beverage_n+1
+  }
+  
+```
+
+

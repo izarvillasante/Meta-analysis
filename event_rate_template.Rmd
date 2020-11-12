@@ -1,0 +1,355 @@
+---
+title: "Meta analysis on cancer and beverage intake"
+author: "Izar de Villasante, Brainvitge"
+date: '`r format(Sys.Date(),"%e de %B, %Y")`'
+#runtime: shiny
+output:
+  html_document:
+    df_print: paged
+    toc: yes
+    toc_depth: 4
+    toc_float: yes
+  word_document:
+    toc: yes
+    toc_depth: '4'
+  pdf_document:
+    keep_tex: yes
+    toc: yes
+    toc_depth: 4
+params:
+  excel: "Table_1.3.xlsx"
+  cancer: "Prostate"
+  beverage: "FJ"
+  cancer_n: 1
+  beverage_n: 1
+    
+header-includes: 
+  - \usepackage{bbm}
+  - \usepackage[spanish]{babel}
+---
+
+
+
+```{r , include=FALSE}
+require(knitr)
+#rmarkdown::render("panacea.Rmd", params = "ask")
+opts_knit$set(output.dir = getwd())
+opts_knit$set(root.dir = getwd())
+# include this code chunk as-is to set options
+opts_chunk$set(comment = NA, prompt = TRUE, tidy = FALSE, 
+               fig.width = 20, fig.height = 20,echo = TRUE, 
+               message = FALSE, warning = FALSE, cache=FALSE)
+Sys.setlocale("LC_TIME", "C")
+```
+
+```{r , include=FALSE}
+if(!(require(readxl))) install.packages("readxl")
+if(!(require(devtools))) install.packages("devtools")
+if(!(require(lmerTest))) install.packages("lmerTest")
+if(!(require(ggplot2))) install.packages("ggplot2")
+if(!(require(ggpubr)))install.packages("ggpubr")
+if(!(require(grid)))install.packages("grid")
+
+if(!(require(ggrepel)))install.packages("ggrepel")
+if(!(require(forcats)))install.packages("forcats")
+if(!(require(dplyr)))install.packages("dplyr")
+if(!(require(gridExtra)))install.packages("gridExtra")
+
+
+if(!(require(meta)))install.packages("meta")
+if(!(require(metafor)))install.packages("metafor")
+if(!(require(dmetar)))devtools::install_github("MathiasHarrer/dmetar") 
+if(!require("tidyverse")) install.packages("tidyverse")
+if(!require("fs")) install.packages("fs")
+if(!require("readxl")) install.packages("readxl")
+
+
+if(!(require(printr))) {
+  install.packages(
+    'printr',
+    type = 'source',
+    repos = c('http://yihui.name/xran', 'http://cran.rstudio.com')
+  )
+}
+```
+
+
+```{r, include=FALSE}
+if(!exists("cancer_n")){cancer_n<-params$cancer_n}
+if(!exists("cancer")){cancer<-params$cancer}
+
+if(!exists("beverage")){beverage<-params$beverage}
+if(!exists("beverage_n")){beverage_n<-params$beverage_n}
+
+if(!exists("bev_data")){
+  cancer_data <- readRDS(file = "cancer_data.rds")
+  bev_data<-cancer_data[[cancer]][cancer_data[[cancer]]$Type_of_beverages==beverage,]
+  }
+```
+
+
+
+
+```{r, include=FALSE}
+data <- bev_data[complete.cases(bev_data[ , c("Ne","Nc","Ee","Ec")]),]
+beverage <- gsub('[[:digit:]]+', '', data$Type_of_beverages[1])#Saves the beverage without numbers
+
+```   
+
+
+### `r cancer_n`.`r beverage_n`.`r cancer` `r beverage` 
+
+
+In this section the effect of the intake of `r beverage` to `r cancer` cancer incidence is assessed.
+
+
+####  Aggregate `r cancer` `r beverage` data .
+
+
+```{r}
+if(NROW(data)==1){knit_exit()}
+```
+
+
+
+
+
+```{r}
+library(meta)
+meta <- metabin(as.numeric(Ee),
+                 as.numeric(Ne),
+                 as.numeric(Ec),
+                 as.numeric(Nc),
+                 data = data,
+                 studlab = Source,
+                 comb.fixed = TRUE,
+                 comb.random = TRUE,
+                 method.tau = "SJ",
+                 hakn = TRUE,
+                 prediction = TRUE,
+                 incr = 0.1,
+                 sm = "RR")
+
+
+meta
+```
+
+```{r}
+tmp <- data.frame(name=paste0(cancer, "_", beverage,"_calc") , cancer=cancer, beverage=beverage, RR=meta:::backtransf(meta$TE.random, sm = meta$sm),lower=meta:::backtransf(meta$lower.random, sm = meta$sm),higher=meta:::backtransf(meta$upper.random, sm = meta$sm),I2=meta$I2,I2_lower=meta$lower.I2,I2_upper=meta$upper.I2, n=meta$k)
+
+
+
+
+if (exists("summaries") && is.data.frame(get("summaries")))
+  {if (!tmp$name %in% summaries$name)
+      {summaries <- rbind(summaries,tmp)}}else{summaries <- tmp}
+
+```
+
+
+
+
+The overall effect is  `r tmp$RR` with a CI of [`r tmp$lower` ; `r tmp$higher`], `r if( meta$pval.random >0.05){c("The p-value", meta$pval.random," > 0.05 indicates that the exposure to", beverage," group does not make a statistically significant difference.")}else{c("The p-value", meta$pval.random ," < 0.05 suggests that the expossure to ",  beverage  ," is significant") }`
+
+
+#### Overall Heterogeneity:  
+
+The heterogeneity quantification shows the heterogeneity of all studies. The Higgins’ I2 of heterogeneity is determined by subtracting the degrees of freedom from the Cochrane Q statistics and then dividing the resulting value by the Cochrane Q statistics again. The I2 index is a more recent approach to quantify heterogeneity in meta-analyses. I2 provides an estimate of the percentage of variability in results across studies that is due to real differences and not due to chance. The I2 index measures the extent of heterogeneity by dividing the result of Cochran’s Q test and its degrees of freedom by the Q-value itself.
+When I2 is 0%, variability can be explained by chance alone. If I2 is 20%, this would mean that 20% of the observed variation in treatment effects cannot be attributed to chance alone. Some underlying factor may be the potential effect-measure modifier. An I2 of less than 25% is usually viewed as low heterogeneity, between 25% and 50% as moderate, and over 50% as high heterogeneity. The limitation of I2 is that it provides only a measure of global heterogeneity but no information for the factor causing heterogeneity, similar to Cochran’s Q test.
+
+The Q test, with a p-value of `r meta$pval.Q` suggests`r if(meta$pval.Q > 0.05){"that there is no evidence of a strong hetereogenity."}else{"that there is evidence of hetereogenity."}` 
+
+#### Forest plot:
+A good way to visualize the above meta-analysis is the forest plot, which is always recommended to be included in a meta-analysis.
+
+```{r,fig.height=7, fig.width=10}
+
+
+
+meta::forest(meta,
+       sortvar=TE,
+       layout= "RevMan5",
+       rightlabs = c("g","95% CI","weight"),
+       leftlabs = c("Author", "N","Mean","SD","N","Mean","SD"),
+       lab.e = "Intervention",
+       pooled.totals = FALSE,
+       smlab = "",
+       #text.random = "Overall effect",
+       print.tau2 = FALSE,
+       col.diamond = "blue",
+       col.diamond.lines = "black",
+       col.predict = "black",
+       print.I2.ci = TRUE,
+       digits.sd = 2,
+       colgap.forest.left = unit(15,"mm")
+)
+```
+
+
+
+
+
+
+
+
+#### Between-study heterogeneity
+
+Heterogeneity can also be caused by one or more studies with extreme effect sizes which do not quite fit in. Especially when the quality of these studies is low, or the studies are very small, this may distort our pooled effect estimate, and it’s a good idea to have a look on the pooled effect again once we remove such **outliers** from the analysis.
+
+On the other hand, we also want to know if the pooled effect estimate we found is robust, meaning that the effect does not depend heavily on one single study. Therefore, we also want to know whether there are studies which heavily push the effect of our analysis into one direction. Such studies are called **influential cases**.
+
+##### Outliers
+
+A common method to detect outliers directly is to define a study as an outlier if the study’s confidence interval does not overlap with the confidence interval of the pooled effect. This means that we define a study as an outlier when its effect size estimate is so extreme that we have high certainty that the study cannot be part of the “population” of effect sizes we actually pool in our meta-analysis (i.e., the individual study differs significantly from the overall effect). To detect such outliers in our dataset, we can search for all studies:
+
+for which the upper bound of the 95% confidence interval is lower than the lower bound of the pooled effect confidence interval (i.e., extremely small effects)
+for which the lower bound of the 95% confidence interval is higher than the upper bound of the pooled effect confidence interval (i.e., extremely large effects)
+
+```{r}
+meta$lower.random
+meta$upper.random
+
+```
+
+```{r}
+
+fo <-find.outliers(meta)
+fo
+
+```
+
+##### Influential Points
+
+Leave-One-Out-method, in which we recalculate the results of our meta-analysis $K-1$ times, each time leaving out one study. This way, we can more easily detect studies which influence the overall estimate of our meta-analysis the most, and this lets us better assess if this influence may distort our pooled effect (Viechtbauer and Cheung 2010). Thus, such analyses are called Influence Analyses.
+To work with influence analysis we must assign different names to each study, like that:
+
+```{r}
+
+(meta$studlab <- make.unique(as.character(meta$studlab)))
+```
+
+```{r}
+inf.analysis <- InfluenceAnalysis(x = meta,random = TRUE, text.scale	= 2)
+
+```
+
+
+```{r}
+summary(inf.analysis)
+```
+The study that contributes most to the overall hetereogenity is `r inf.analysis$BaujatPlot$data$studlab[1]`
+
+##### Influence Plot
+```{r,fig.height=5, fig.width=7.5}
+plot(inf.analysis$InfluenceCharacteristics)
+```
+
+##### Baujat Plot
+```{r,,fig.height=5, fig.width=7.5}
+
+#inf.analysis$BaujatPlot$layers[[3]]$aes_params$size = 8
+
+plot(inf.analysis$BaujatPlot)
+```
+
+##### Gosh Plot
+
+An even more sophisticated way to explore the patterns of effect sizes and heterogeneity in our data are so-called Graphic Display of Heterogeneity (GOSH) plots (Olkin, Dahabreh, and Trikalinos 2012). For those plots, we fit the same meta-analysis model to all possible subsets of our included studies. In constrast to the leave-one-out method, we therefore not only fit  
+K − 1 models, but all 2^(k-1) possible study combinations. T
+
+Once the models are calculated, we can plot them, displaying the pooled effect size on the x-axis and the between-study heterogeneity at the y-axis. This allows us to look for specific patterns, for example subclusters with different effect sizes. This would indicate that there is in fact more than one “population” of effect sizes in our data, warranting a subgroup analysis. If the effect sizes in our sample are homogeneous, the GOSH plot should form a symmetric distribution with one peak. To generate GOSH plots, we can use the gosh function in the metafor package.
+
+
+Before we can generate the plot, we have to “transform” this object created by the meta package into a metafor meta-analysis object which can be used for the gosh function. 
+```{r}
+m.rma <- rma(yi = meta$TE, 
+             sei = meta$seTE,
+             method = meta$method.tau,
+             test = "knha")
+```
+
+We can then use this object to generate the GOSH plot object. 
+```{r, error=TRUE,quiet=TRUE}
+
+dat.gosh <- gosh(m.rma)
+#saveRDS(dat.gosh, file="meta_cohort_gosh.RDS")
+#dat.gosh <- readRDS("~/Rstudio/notebooks/Epic/Meta/meta_cohort_gosh.RDS")
+plot(dat.gosh, alpha= 1, col = "blue")
+#plot(gosh.diagnostics(dat.gosh))
+
+
+
+```
+
+
+
+
+#### Publication Bias
+
+#### Funnel plot
+
+```{r}
+funnel(meta,xlab = "Hedges' g", studlab = TRUE,cex = 2,cex.studlab = 2,)
+
+```
+
+
+##### Egger test
+Testing for funnel plot asymmetry using Egger’s test
+
+Egger’s test of the intercept (Egger et al. 1997) quantifies the funnel plot asymmetry and performs a statistical test.
+
+```{r, error=TRUE}
+#eggers.test(x = e)
+```
+The function returns the intercept along with its confidence interval. We can see that the p-value of Egger’s test is not significant ( p > 0.05 ), which means that there is no substanital asymmetry in the Funnel plot. 
+
+####  Excluding outliers:
+
+
+
+```{r, fig.height=10, fig.width=10}
+if(length(fo$out.study.random)!= 0){
+  
+  meta <- metagen(RR, 
+          seTE, 
+          studlab = Source,
+          method.tau = "SJ",
+          sm = "RR",
+          data = data, 
+          comb.random=T,
+          hakn = T,
+          exclude = data$Source==fo$out.study.random, #exclude those articles present in fo$out
+          prediction = T)
+  
+  
+  meta::forest(meta,
+         sortvar=TE,
+         layout= "RevMan5",
+         rightlabs = c("g","95% CI","weight"),
+         leftlabs = c("Author", "N","Mean","SD","N","Mean","SD"),
+         lab.e = "Intervention",
+         pooled.totals = FALSE,
+         smlab = "",
+         text.random = "Overall effect",
+         print.tau2 = FALSE,
+         col.diamond = "blue",
+         col.diamond.lines = "black",
+         col.predict = "black",
+         print.I2.ci = TRUE,
+         digits.sd = 2,
+         colgap.forest.left = unit(15,"mm")
+  )
+  
+  tmp <- data.frame(name = paste0(cancer, "_", beverage,"_outliers_calc"),cancer=cancer, beverage = paste0(beverage), RR=meta:::backtransf(meta$TE.random, sm = meta$sm), lower=meta:::backtransf(meta$lower.random, sm = meta$sm), higher=meta:::backtransf(meta$upper.random, sm = meta$sm),I2=meta$I2,I2_lower=meta$lower.I2,I2_upper=meta$upper.I2, n=meta$k)
+  
+  
+  if (exists("summaries") && is.data.frame(get("summaries")))
+  {if (!tmp$name %in% summaries$name)
+      {summaries <- rbind(summaries,tmp)}}else{summaries <- tmp}
+  
+}
+
+```
+
+
